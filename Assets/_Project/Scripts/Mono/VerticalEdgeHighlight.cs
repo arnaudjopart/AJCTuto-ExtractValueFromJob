@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using _Project.Scripts.Jobs;
@@ -19,10 +20,13 @@ public class VerticalEdgeHighlight : MonoBehaviour
     private Vector3[] m_meshVertices;
     private int[] m_meshTriangles;
     private int m_nbTriangles;
-    
+    private NativeArray<Triangle> m_jobTriangles;
+    private NativeArray<HighlightEdge> m_jobResult;
+
     // Start is called before the first frame update
     void Start()
     {
+        
         m_edges = new List<GameObject>();
         
         var mesh = m_meshFilter.mesh;
@@ -30,7 +34,9 @@ public class VerticalEdgeHighlight : MonoBehaviour
         m_meshTriangles = mesh.triangles;
 
         m_nbTriangles = m_meshTriangles.Length / 3;
-        
+        m_jobTriangles = new NativeArray<Triangle>(m_nbTriangles, Allocator.Persistent);
+        m_jobResult = new NativeArray<HighlightEdge>(m_nbTriangles, Allocator.Persistent);
+
     }
 
     // Update is called once per frame
@@ -42,10 +48,6 @@ public class VerticalEdgeHighlight : MonoBehaviour
         }
         
         m_edges.Clear();
-        
-        var jobTriangles = new NativeArray<Triangle>(m_nbTriangles, Allocator.TempJob);
-        var jobResult = new NativeArray<HighlightEdge>(m_nbTriangles, Allocator.TempJob);
-
 
         var index = 0;
 
@@ -60,22 +62,22 @@ public class VerticalEdgeHighlight : MonoBehaviour
                 m_vertice3 = meshRotation * m_meshVertices[m_meshTriangles[i + 2]],
             };
 
-            jobTriangles[index] = triangle;
+            m_jobTriangles[index] = triangle;
             index++;
         }
 
         var job = new VerticalEdgeDetectorJob
         {
-            m_triangles = jobTriangles,
-            m_result = jobResult,
+            m_triangles = m_jobTriangles,
+            m_result = m_jobResult,
             m_testValidationThreshold = m_verticalHighlightThreshold
         };
 
 
-        var jobHandle = job.Schedule(jobTriangles.Length, 10);
+        var jobHandle = job.Schedule(m_jobTriangles.Length, 10);
         jobHandle.Complete();
 
-        foreach (var result in jobResult)
+        foreach (var result in m_jobResult)
         {
             if (result.m_edgePoint1 == Vector3.zero && result.m_edgePoint2 == Vector3.zero) continue;
 
@@ -87,9 +89,12 @@ public class VerticalEdgeHighlight : MonoBehaviour
             
             edge.GetComponent<LineRenderer>().SetPositions(linePoints);
         }
-
-        jobResult.Dispose();
-        jobTriangles.Dispose();
         
+    }
+
+    private void OnDestroy()
+    {
+        m_jobResult.Dispose();
+        m_jobTriangles.Dispose();
     }
 }
